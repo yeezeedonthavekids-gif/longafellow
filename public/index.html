@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Longafellow</title>
+		<link rel="icon" id="favicon" href="/favicon.png" />
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			rel="stylesheet"
+			href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;800&family=Poppins:wght@400;500;600;700;800&display=swap"
+		/>
+		<link rel="stylesheet" href="/style.css" />
+		<script src="/config.js"></script>
+		<script src="/scramjet/scramjet.js"></script>
+		<script src="/controller/controller.api.js"></script>
+	</head>
+	<body>
+		<div id="backdrop" aria-hidden="true">
+			<div class="glow g1"></div>
+			<div class="glow g2"></div>
+			<div class="glow g3"></div>
+			<canvas id="stars"></canvas>
+			<div id="bg-image"></div>
+		</div>
+
+		<div id="shell">
+			<!-- side rail -->
+			<nav id="rail">
+				<button class="rail-logo" data-action="home" title="Home">
+					<img src="/assets/logo.png" alt="Longafellow" />
+				</button>
+				<div class="rail-group">
+					<button data-action="home" title="Home"><i data-icon="home"></i></button>
+					<button data-action="newtab" title="New tab (Alt+T)"><i data-icon="plus"></i></button>
+					<button data-action="history" title="History"><i data-icon="history"></i></button>
+					<button data-action="settings" title="Settings"><i data-icon="settings"></i></button>
+				</div>
+				<div class="rail-group rail-bottom">
+					<button data-action="cloak" title="Open in about:blank"><i data-icon="ghost"></i></button>
+					<button data-action="fullscreen" title="Fullscreen"><i data-icon="expand"></i></button>
+				</div>
+			</nav>
+
+			<main id="main">
+				<!-- tabs + toolbar -->
+				<header id="chrome">
+					<div id="tabstrip">
+						<div id="tabs"></div>
+						<button id="add-tab" title="New tab (Alt+T)"><i data-icon="plus"></i></button>
+					</div>
+					<div id="toolbar">
+						<div class="nav-btns">
+							<button data-action="back" title="Back"><i data-icon="left"></i></button>
+							<button data-action="forward" title="Forward"><i data-icon="right"></i></button>
+							<button data-action="reload" title="Reload"><i data-icon="reload"></i></button>
+						</div>
+						<form id="omnibox" autocomplete="off">
+							<span class="omni-scheme" id="omni-scheme"><i data-icon="search"></i></span>
+							<input id="omni-input" spellcheck="false" placeholder="Search or enter a URL" />
+							<span class="omni-hint" id="omni-engine">GOOGLE</span>
+						</form>
+						<div class="nav-btns">
+							<button data-action="bookmark" id="bookmark-btn" title="Add to shortcuts"><i data-icon="star"></i></button>
+							<button data-action="popout" title="Open page in about:blank"><i data-icon="external"></i></button>
+						</div>
+					</div>
+				</header>
+
+				<section id="viewport">
+					<!-- internal pages -->
+					<div id="page-newtab" class="page">
+						<div class="hero">
+							<div class="clock-wrap" id="clock-wrap">
+								<div class="date" id="date"></div>
+								<div class="time" id="time"></div>
+								<div class="greeting" id="greeting"></div>
+							</div>
+							<img class="hero-logo" id="hero-logo" src="/assets/logo.png" alt="" />
+							<h1 class="wordmark" id="wordmark">LONGAFELLOW</h1>
+							<p class="tagline" id="tagline"></p>
+							<form class="search" id="hero-search" autocomplete="off">
+								<i data-icon="search"></i>
+								<input id="hero-input" spellcheck="false" placeholder="Search or enter a URL" />
+								<button type="button" class="engine-chip" id="engine-chip" title="Change search engine"></button>
+							</form>
+							<div class="shortcuts" id="shortcuts"></div>
+						</div>
+						<footer class="nt-footer">
+							<span id="status-dot" class="dot"></span><span id="status-text">Starting proxy…</span>
+						</footer>
+					</div>
+
+					<div id="page-settings" class="page internal"></div>
+					<div id="page-history" class="page internal"></div>
+					<div id="frames"></div>
+				</section>
+			</main>
+		</div>
+
+		<dialog id="shortcut-dialog">
+			<form method="dialog" id="shortcut-form">
+				<h3 id="shortcut-dialog-title">Add shortcut</h3>
+				<label>Name<input name="name" required maxlength="24" /></label>
+				<label>URL<input name="url" required /></label>
+				<label class="row">Tile color<input type="color" name="color" value="#2563eb" /></label>
+				<div class="dialog-actions">
+					<button value="cancel" formnovalidate class="btn ghost">Cancel</button>
+					<button value="save" class="btn">Save</button>
+				</div>
+			</form>
+		</dialog>
+
+		<div id="toast"></div>
+
+		<script type="module" src="/js/app.js"></script>
+	</body>
+</html>

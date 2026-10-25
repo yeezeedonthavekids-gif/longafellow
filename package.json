@@ -1,0 +1,22 @@
+{
+  "name": "longafellow",
+  "version": "1.0.0",
+  "description": "Longafellow - a customizable web proxy built on Scramjet",
+  "type": "module",
+  "main": "server.js",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "start": "node server.js",
+    "build": "node scripts/build.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@mercuryworkshop/epoxy-transport": "3.0.2",
+    "@mercuryworkshop/libcurl-transport": "2.0.6",
+    "@mercuryworkshop/scramjet": "2.0.67-alpha.2",
+    "@mercuryworkshop/scramjet-controller": "0.0.14",
+    "@mercuryworkshop/wisp-js": "0.5.1"
+  }
+}
