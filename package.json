@@ -1,6 +1,6 @@
 {
   "name": "longafellow",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "Longafellow - a customizable web proxy built on Scramjet",
   "type": "module",
   "main": "server.js",

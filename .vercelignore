@@ -1,0 +1,2 @@
+# Vercel serves the static build only (the Wisp server runs on Render)
+server.js

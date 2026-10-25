@@ -38,6 +38,11 @@ Users can also point to a different Wisp server in *Settings → Search & proxy*
 **Keep Render awake:** free Render services sleep after 15 minutes. Point a free uptime monitor
 (UptimeRobot, cron-job.org) at `https://<your-service>.onrender.com/health` every 10 minutes.
 
+### Vercel
+
+Import the repo. `vercel.json` makes Vercel build the static site (`npm run build` into `dist`), and `.vercelignore`
+keeps it from trying to run `server.js`, since Vercel can't host the Wisp server. The site uses the Render Wisp server by default.
+
 ### Fastly
 
 - Fastly can sit in front of Netlify as a CDN. Make sure `/sw.js` and `/config.js` aren't cached long (they're sent with `Cache-Control: no-cache`).
