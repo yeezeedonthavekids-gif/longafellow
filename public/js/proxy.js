@@ -57,6 +57,14 @@ export async function createFrame(iframe) {
 	return frame;
 }
 
+// Fetches a URL through the Wisp transport (for when a host is blocked on the local network).
+export async function proxyFetchText(url) {
+	await initProxy();
+	const res = await controller.transport.request(new URL(url), "GET", null, [], undefined);
+	if (res.status >= 400) throw new Error(`HTTP ${res.status}`);
+	return new Response(res.body).text();
+}
+
 // Resolves true if a WebSocket to the Wisp server opens within the timeout.
 export function checkWisp(url = wispUrl(), timeout = 8000) {
 	return new Promise((resolve) => {

@@ -41,7 +41,7 @@ Users can also point to a different Wisp server in *Settings → Search & proxy*
 ## Games
 
 The **Games** page lists 849 HTML games from [gn-math](https://github.com/gn-math/html), with search, favorites and recently played.
-The list is bundled at `public/data/games.json`, and each game file and cover loads from jsDelivr when you open it.
+The list is bundled at `public/data/games.json`, and each game file and cover loads from GitHub (raw.githubusercontent.com) when you open it, falling back to jsDelivr and then the proxy.
 To refresh the list, run `npm run update-games`.
 
 ## How it works

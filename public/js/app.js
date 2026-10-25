@@ -15,8 +15,8 @@ import {
 	defaults,
 } from "./settings.js";
 import { startBackground, seedStars } from "./background.js";
-import { initProxy, createFrame, realUrl, switchTransport, wispUrl, checkWisp } from "./proxy.js";
-import { renderGames, loadGames, getGame, markPlayed, GAME_HTML, GAME_COVERS } from "./games.js";
+import { initProxy, createFrame, realUrl, switchTransport, wispUrl, checkWisp, proxyFetchText } from "./proxy.js";
+import { renderGames, loadGames, getGame, markPlayed, fetchGameHtml, GAME_COVERS } from "./games.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -255,12 +255,10 @@ async function launchGame(game, tab = activeTab()) {
 
 	let html;
 	try {
-		const res = await fetch(GAME_HTML + game.file);
-		if (!res.ok) throw new Error(`HTTP ${res.status}`);
-		html = await res.text();
+		html = await fetchGameHtml(game, proxyFetchText);
 	} catch (err) {
 		html = `<body style="margin:0;display:grid;place-items:center;height:100vh;background:${settings.bg};color:${settings.text};font-family:system-ui">
-			<div style="text-align:center"><h2>Couldn't load ${esc(game.name)}</h2><p style="opacity:.7">${esc(err.message)} — the game CDN (cdn.jsdelivr.net) may be blocked or offline.</p></div></body>`;
+			<div style="text-align:center"><h2>Couldn't load ${esc(game.name)}</h2><p style="opacity:.7">Every game source failed. Details: ${esc(err.message)}</p></div></body>`;
 	}
 	// the tab may have been closed or sent elsewhere while we were downloading
 	if (tab.iframe !== iframe) return;

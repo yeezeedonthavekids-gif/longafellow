@@ -1,8 +1,31 @@
 import { icon } from "./icons.js";
 
-// Game files and covers come from the gn-math repos, served through jsDelivr.
-export const GAME_HTML = "https://cdn.jsdelivr.net/gh/gn-math/html@main/";
-export const GAME_COVERS = "https://cdn.jsdelivr.net/gh/gn-math/covers@main/";
+// Game files and covers come from the gn-math repos on GitHub.
+// jsDelivr refuses the html repo (it's over its 50 MB limit), so GitHub's raw host goes first.
+const GAME_SOURCES = ["https://raw.githubusercontent.com/gn-math/html/main/", "https://cdn.jsdelivr.net/gh/gn-math/html@main/"];
+export const GAME_COVERS = "https://raw.githubusercontent.com/gn-math/covers/main/";
+
+// Tries each host directly, then the same hosts through the proxy.
+export async function fetchGameHtml(game, proxyFetchText) {
+	const errors = [];
+	for (const base of GAME_SOURCES) {
+		try {
+			const res = await fetch(base + game.file);
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			return await res.text();
+		} catch (e) {
+			errors.push(`${new URL(base).host}: ${e.message}`);
+		}
+	}
+	for (const base of GAME_SOURCES) {
+		try {
+			return await proxyFetchText(base + game.file);
+		} catch (e) {
+			errors.push(`${new URL(base).host} via proxy: ${e.message}`);
+		}
+	}
+	throw new Error(errors.join(" · "));
+}
 
 const FAV_KEY = "longafellow:games:favorites";
 const RECENT_KEY = "longafellow:games:recent";
