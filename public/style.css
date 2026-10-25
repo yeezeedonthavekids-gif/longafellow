@@ -2134,3 +2134,17 @@ body.hide-widgets .widgets {
 		display: none;
 	}
 }
+
+#version {
+	margin-left: auto;
+	padding: 4px 10px;
+	flex: none;
+	border-radius: 999px;
+	font-size: 0.72rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	font-variant-numeric: tabular-nums;
+	color: var(--muted);
+	border: 1px solid var(--border);
+	cursor: default;
+}

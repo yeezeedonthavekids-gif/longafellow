@@ -24,8 +24,10 @@ for (const [dir, [src, files]] of Object.entries(copies)) {
 
 const wisp = process.env.WISP_URL || "wss://longafellow.onrender.com/wisp/";
 const wispBackups = (process.env.WISP_BACKUPS || "").split(/[\s,]+/).filter(Boolean);
+// Netlify provides the commit being deployed; shown when hovering the version number
+const build = (process.env.COMMIT_REF || "").slice(0, 7);
 writeFileSync(
 	join(out, "config.js"),
-	`self.LONGAFELLOW_CONFIG = ${JSON.stringify({ wisp, wispBackups }, null, "\t")};\n`,
+	`self.LONGAFELLOW_CONFIG = ${JSON.stringify({ wisp, wispBackups, build }, null, "\t")};\n`,
 );
 console.log(`Built dist/ (wisp: ${wisp}${wispBackups.length ? `, backups: ${wispBackups.join(", ")}` : ""})`);

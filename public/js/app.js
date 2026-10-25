@@ -37,6 +37,7 @@ import { attachSuggest } from "./suggest.js";
 import { initLock, lock, setPin, clearPin, isLocked } from "./lock.js";
 import { renderWidgets, WIDGETS } from "./widgets.js";
 import { saveWallpaper, wallpaperUrl } from "./wallpaper.js";
+import { VERSION } from "./version.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -1267,6 +1268,12 @@ onChange((patch) => {
 });
 
 /* ---------------- boot ---------------- */
+{
+	const build = self.LONGAFELLOW_CONFIG?.build;
+	const el = $("#version");
+	el.textContent = `v${VERSION}`;
+	el.title = `Longafellow v${VERSION}${build ? ` · build ${build}` : ""}`;
+}
 hydrateIcons();
 applyAppearance();
 startBackground();
