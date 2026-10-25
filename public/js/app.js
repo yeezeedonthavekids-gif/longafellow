@@ -13,10 +13,28 @@ import {
 	cloaks,
 	fonts,
 	defaults,
+	applyCloak,
 } from "./settings.js";
 import { startBackground, seedStars } from "./background.js";
-import { initProxy, createFrame, realUrl, switchTransport, wispUrl, checkWisp, proxyFetchText } from "./proxy.js";
-import { renderGames, loadGames, getGame, markPlayed, fetchGameHtml, GAME_COVERS } from "./games.js";
+import { initProxy, createFrame, realUrl, switchTransport, wispUrl, checkWisp, proxyFetchText, usingBackupWisp } from "./proxy.js";
+import {
+	renderGames,
+	loadGames,
+	getGame,
+	markPlayed,
+	fetchGameHtml,
+	GAME_COVERS,
+	isFavorite,
+	toggleFavorite,
+	recentGames,
+	featuredGames,
+	randomGame,
+	searchGames,
+} from "./games.js";
+import { blockedSoFar } from "./adblock.js";
+import { exportAll, importAll, downloadJSON } from "./saves.js";
+import { attachSuggest } from "./suggest.js";
+import { initLock, lock, setPin, clearPin, isLocked } from "./lock.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -110,6 +128,7 @@ function activate(id) {
 
 function showActive() {
 	const tab = activeTab();
+	if (tab.pending) return resolvePending(tab);
 	for (const page of document.querySelectorAll(".page")) page.classList.remove("show");
 	for (const t of tabs) t.iframe?.classList.toggle("show", t === tab && (t.kind === "web" || t.kind === "game"));
 	if (tab.kind === "newtab") $("#page-newtab").classList.add("show");
@@ -129,7 +148,65 @@ function showActive() {
 		b.classList.toggle("active", b.dataset.action === (tab.kind === "newtab" ? "home" : tab.kind));
 	}
 	syncOmnibox();
-	if (tab.kind === "newtab") setTimeout(() => $("#hero-input").focus(), 0);
+	if (tab.kind === "newtab") {
+		renderHomeGames();
+		setTimeout(() => !isLocked() && $("#hero-input").focus(), 0);
+	}
+}
+
+/* ---------------- session (reopen tabs) ---------------- */
+const SESSION_KEY = "longafellow:session";
+
+function saveSession() {
+	try {
+		if (!settings.restoreTabs) return localStorage.removeItem(SESSION_KEY);
+		const data = {
+			active: tabs.findIndex((t) => t.id === activeId),
+			tabs: tabs.map((t) => ({
+				kind: t.kind,
+				title: t.title,
+				url: t.kind === "web" ? t.url || t.pending?.url : undefined,
+				game: t.kind === "game" ? (t.game?.id ?? t.pending?.game) : undefined,
+			})),
+		};
+		localStorage.setItem(SESSION_KEY, JSON.stringify(data));
+	} catch {
+		// storage full or unavailable
+	}
+}
+
+function restoreSession() {
+	if (!settings.restoreTabs) return false;
+	let data;
+	try {
+		data = JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
+	} catch {
+		return false;
+	}
+	if (!Array.isArray(data?.tabs) || !data.tabs.length) return false;
+	for (const s of data.tabs) {
+		const tab = { id: nextId++, kind: s.kind, url: null, title: s.title || INTERNAL[s.kind]?.title || "New Tab", favicon: null, loading: false };
+		// web pages and games load only when their tab is opened, so restored tabs don't all start playing at once
+		if (s.kind === "web" && s.url) tab.pending = { url: s.url };
+		else if (s.kind === "game" && s.game != null) tab.pending = { game: s.game };
+		else if (!INTERNAL[s.kind]) Object.assign(tab, { kind: "newtab", title: "New Tab" });
+		tabs.push(tab);
+	}
+	activate(tabs[Math.min(Math.max(data.active, 0), tabs.length - 1)].id);
+	return true;
+}
+
+function resolvePending(tab) {
+	const { url, game } = tab.pending;
+	tab.pending = null;
+	if (url) return navigate(url, tab);
+	loadGames()
+		.then(() => {
+			const g = getGame(game);
+			if (g) launchGame(g, tab);
+			else navigate(INTERNAL.games.url, tab);
+		})
+		.catch(() => navigate(INTERNAL.games.url, tab));
 }
 
 function syncOmnibox() {
@@ -142,9 +219,61 @@ function syncOmnibox() {
 	}
 	const secure = tab.kind === "web" && tab.url?.startsWith("https:");
 	$("#omni-scheme").innerHTML = icon(secure ? "lock" : tab.kind === "web" ? "globe" : "search");
-	const starred = tab.kind === "web" && settings.shortcuts.some((s) => sameUrl(s.url, tab.url));
-	$("#bookmark-btn").classList.toggle("on", starred);
+	const here = currentUrl(tab);
+	$("#bookmark-btn").classList.toggle("on", !!here && settings.bookmarks.some((b) => sameUrl(b.url, here)));
+	$("#game-actions").hidden = tab.kind !== "game";
+	if (tab.kind === "game" && tab.game) $("#game-fav-btn").classList.toggle("on", isFavorite(tab.game.id));
 }
+
+// The address of what a tab shows, if it's something that can be bookmarked.
+function currentUrl(tab) {
+	if (tab.kind === "web") return tab.url;
+	if (tab.kind === "game" && tab.game) return `longafellow://games/${tab.game.id}`;
+	return null;
+}
+
+/* ---------------- bookmarks bar ---------------- */
+function renderBookmarks() {
+	const bar = $("#bookmarks-bar");
+	const list = settings.bookmarks;
+	bar.hidden = !settings.showBookmarksBar || !list.length;
+	bar.innerHTML = list
+		.map(
+			(b, i) =>
+				`<button class="bm" data-i="${i}" title="${esc(b.url)}&#10;Right-click to remove"><span class="b">${esc((b.title || "?")[0].toUpperCase())}</span><span>${esc(b.title)}</span></button>`,
+		)
+		.join("");
+}
+
+function toggleBookmark(tab) {
+	const url = currentUrl(tab);
+	if (!url) return toast("Open a web page or game to bookmark it");
+	const exists = settings.bookmarks.some((b) => sameUrl(b.url, url));
+	if (exists) {
+		set({ bookmarks: settings.bookmarks.filter((b) => !sameUrl(b.url, url)) });
+		toast("Bookmark removed");
+	} else {
+		set({ bookmarks: [...settings.bookmarks, { title: (tab.title || url).slice(0, 40), url }] });
+		toast(settings.showBookmarksBar ? "Bookmarked" : "Bookmarked (the bookmarks bar is turned off in Settings)");
+	}
+}
+
+$("#bookmarks-bar").addEventListener("click", (e) => {
+	const el = e.target.closest(".bm");
+	if (el) navigate(settings.bookmarks[el.dataset.i].url);
+});
+$("#bookmarks-bar").addEventListener("auxclick", (e) => {
+	const el = e.target.closest(".bm");
+	if (el && e.button === 1) newTab("newtab", settings.bookmarks[el.dataset.i].url);
+});
+$("#bookmarks-bar").addEventListener("contextmenu", (e) => {
+	const el = e.target.closest(".bm");
+	if (!el) return;
+	e.preventDefault();
+	const removed = settings.bookmarks[el.dataset.i];
+	set({ bookmarks: settings.bookmarks.filter((_, i) => i !== Number(el.dataset.i)) });
+	toast(`Removed "${removed.title}"`);
+});
 
 const sameUrl = (a, b) => (a || "").replace(/\/$/, "") === (b || "").replace(/\/$/, "");
 
@@ -169,6 +298,7 @@ function renderTabs() {
 		});
 		wrap.append(el);
 	}
+	saveSession();
 }
 
 // Destroys a tab's page so its audio/video stops instead of playing in the background.
@@ -300,6 +430,35 @@ function pollTab(tab) {
 setInterval(() => tabs.forEach(pollTab), 600);
 
 /* ---------------- new tab page ---------------- */
+let homeFeatured = null;
+
+async function renderHomeGames() {
+	const el = $("#home-games");
+	if (!settings.showHomeGames) {
+		el.hidden = true;
+		return;
+	}
+	try {
+		await loadGames();
+	} catch {
+		el.hidden = true;
+		return;
+	}
+	const recent = recentGames(6);
+	homeFeatured ??= featuredGames(6);
+	const list = recent.length ? recent : homeFeatured;
+	el.innerHTML = `<div class="home-games-head"><span>${recent.length ? "Jump back in" : "Featured games"}</span><button data-action="games">See all games &rarr;</button></div>
+		<div class="home-games-row">${list
+			.map((g) => `<button class="mini-game" data-game="${g.id}" title="${esc(g.name)}"><img loading="lazy" alt="" src="${GAME_COVERS}${esc(g.cover)}"><span>${esc(g.name)}</span></button>`)
+			.join("")}</div>`;
+	el.hidden = false;
+}
+
+$("#home-games").addEventListener("click", (e) => {
+	const el = e.target.closest("[data-game]");
+	if (el) launchGame(getGame(Number(el.dataset.game)), activeTab());
+});
+
 function tickClock() {
 	const now = new Date();
 	$("#date").textContent = now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
@@ -443,7 +602,10 @@ const sections = [
 			{ key: "showClock", type: "toggle", name: "Show clock & greeting" },
 			{ key: "use24h", type: "toggle", name: "24-hour clock", when: (s) => s.showClock },
 			{ key: "showShortcuts", type: "toggle", name: "Show shortcuts", desc: "Right-click a shortcut to edit it." },
+			{ key: "showHomeGames", type: "toggle", name: "Show games on the home page", desc: "Your recent games, or featured ones if you haven't played any." },
 			{ key: "showRail", type: "toggle", name: "Show side bar" },
+			{ key: "showBookmarksBar", type: "toggle", name: "Show bookmarks bar", desc: "Bookmark pages and games with the bookmark button next to the address bar." },
+			{ key: "restoreTabs", type: "toggle", name: "Reopen tabs from last time", desc: "Pages and games reload when you click their tab." },
 			{ type: "button", name: "Restore default shortcuts", label: "Restore", run: () => set({ shortcuts: structuredClone(defaults.shortcuts) }) },
 		],
 	},
@@ -454,6 +616,8 @@ const sections = [
 		items: [
 			{ key: "engine", type: "select", name: "Search engine", options: Object.entries(engines).map(([k, v]) => [k, v.label]) },
 			{ key: "customEngine", type: "text", name: "Custom search URL", desc: "Use %s where the query goes.", placeholder: "https://example.com/search?q=%s", when: (s) => s.engine === "custom" },
+			{ key: "suggestions", type: "toggle", name: "Search suggestions", desc: "Suggestions from DuckDuckGo, fetched through the proxy. Games and history always show." },
+			{ key: "adblock", type: "toggle", name: "Block ads & trackers", desc: () => `Blocks common ad and tracking networks on proxied sites. ${blockedSoFar()} blocked since this page opened.` },
 			{
 				key: "transport",
 				type: "select",
@@ -465,6 +629,7 @@ const sections = [
 				],
 			},
 			{ key: "wisp", type: "text", name: "Wisp server", desc: "Leave empty to use the default server.", placeholder: () => wispUrl() },
+			{ key: "wispBackups", type: "text", name: "Backup Wisp servers", desc: "Used automatically if the main server is down. Separate several with commas.", placeholder: "wss://backup.example.com/wisp/" },
 		],
 	},
 	{
@@ -479,6 +644,11 @@ const sections = [
 			{ key: "autoBlank", type: "toggle", name: "Always open in about:blank", desc: "Relaunches automatically on your first click." },
 			{ key: "panicKey", type: "key", name: "Panic key", desc: "Instantly leaves to the panic URL. Click the box, then press a key." },
 			{ key: "panicUrl", type: "text", name: "Panic URL", placeholder: "https://classroom.google.com" },
+			{ key: "autoCloak", type: "toggle", name: "Disguise when you switch tabs", desc: "Changes this tab's title and icon while you're looking at another tab." },
+			{ key: "autoCloakPreset", type: "select", name: "Disguise as", options: Object.entries(cloaks).filter(([k]) => k !== "none").map(([k, v]) => [k, v.label]), when: (s) => s.autoCloak },
+			{ type: "button", name: "PIN lock", desc: "Ask for a PIN whenever Longafellow opens. Alt+L locks it right away.", label: () => (settings.lockEnabled ? "Change PIN" : "Set PIN"), run: () => openPinDialog() },
+			{ type: "button", name: "Lock now", label: "Lock", when: (s) => s.lockEnabled, run: () => lock() },
+			{ type: "button", name: "Remove PIN", label: "Remove", danger: true, when: (s) => s.lockEnabled, run: () => confirm("Remove the PIN lock?") && (clearPin(), renderSettings(), toast("PIN removed")) },
 			{ key: "saveHistory", type: "toggle", name: "Save history" },
 			{ key: "confirmClose", type: "toggle", name: "Confirm before closing", desc: "Ask before the tab is closed or reloaded." },
 		],
@@ -488,7 +658,9 @@ const sections = [
 		icon: "database",
 		title: "Data",
 		items: [
-			{ type: "button", name: "Export settings", desc: "Download your theme, shortcuts and options as a file.", label: "Export", run: exportSettings },
+			{ type: "button", name: "Back up everything", desc: "Settings, history, bookmarks and game saves in one file. Use it to move progress to another Longafellow site, or as a safety copy.", label: "Download backup", run: backupEverything },
+			{ type: "button", name: "Restore a backup", desc: "Loads a backup file into this site. Data with the same name is replaced.", label: "Restore", run: restoreBackup },
+			{ type: "button", name: "Export settings only", desc: "Just your theme, shortcuts and options.", label: "Export", run: exportSettings },
 			{ type: "button", name: "Import settings", label: "Import", run: importSettings },
 			{ type: "button", name: "Reset everything", desc: "Return all settings to their defaults.", label: "Reset", danger: true, run: () => confirm("Reset all Longafellow settings?") && (reset(), toast("Settings reset")) },
 		],
@@ -515,7 +687,7 @@ function controlHtml(item) {
 		case "key":
 			return `<input type="text" data-key="${item.key}" data-capture value="${esc(v)}" readonly style="width:90px;text-align:center">`;
 		case "button":
-			return `<button class="btn ${item.danger ? "danger" : "ghost"}" data-run>${esc(item.label)}</button>`;
+			return `<button class="btn ${item.danger ? "danger" : "ghost"}" data-run>${esc(typeof item.label === "function" ? item.label() : item.label)}</button>`;
 	}
 	return "";
 }
@@ -538,7 +710,8 @@ function renderSettings() {
 				.join("")}</div>`;
 			return;
 		}
-		html += `<div class="setting" data-i="${i}"><div class="info"><div class="name">${esc(item.name)}</div>${item.desc ? `<div class="desc">${esc(item.desc)}</div>` : ""}</div><div class="control">${controlHtml(item)}</div></div>`;
+		const desc = typeof item.desc === "function" ? item.desc() : item.desc;
+		html += `<div class="setting" data-i="${i}"><div class="info"><div class="name">${esc(item.name)}</div>${desc ? `<div class="desc">${esc(desc)}</div>` : ""}</div><div class="control">${controlHtml(item)}</div></div>`;
 	});
 	html += `</div>`;
 	if (settingsSection === "proxy") {
@@ -621,6 +794,73 @@ function importSettings() {
 	input.click();
 }
 
+async function backupEverything() {
+	try {
+		toast("Preparing backup…");
+		const data = await exportAll();
+		downloadJSON(data, `longafellow-backup-${location.hostname}-${new Date().toISOString().slice(0, 10)}.json`);
+		toast("Backup downloaded");
+	} catch (e) {
+		toast("Backup failed: " + e.message);
+	}
+}
+
+function restoreBackup() {
+	const input = document.createElement("input");
+	input.type = "file";
+	input.accept = "application/json,.json";
+	input.onchange = async () => {
+		try {
+			const data = JSON.parse(await input.files[0].text());
+			if (!confirm(`Restore this backup from ${data.origin || "another site"}? Matching settings and game saves here will be replaced, then the page reloads.`)) return;
+			toast("Restoring…");
+			// close running games and pages so nothing holds their save databases open
+			for (const t of tabs) if (t.iframe) unloadPage(t);
+			await importAll(data);
+			// skip the beforeunload prompt for this reload
+			settings.confirmClose = false;
+			location.reload();
+		} catch (e) {
+			toast("Couldn't restore: " + e.message);
+		}
+	};
+	input.click();
+}
+
+function openPinDialog() {
+	const dialog = $("#pin-dialog");
+	const form = $("#pin-form");
+	form.reset();
+	dialog.returnValue = "";
+	dialog.onclose = async () => {
+		if (dialog.returnValue !== "save") return;
+		if (form.pin.value !== form.confirm.value) return toast("The PINs didn't match. Try again.");
+		await setPin(form.pin.value);
+		renderSettings();
+		toast("PIN set");
+	};
+	dialog.showModal();
+}
+
+/* ---------------- keyboard shortcuts help ---------------- */
+function showHelp() {
+	const keys = [
+		["Alt + T", "New tab"],
+		["Alt + W", "Close tab"],
+		["Alt + 1–9", "Switch to tab 1–9"],
+		["Ctrl + L", "Go to the address bar"],
+		["/", "Search (on the home page)"],
+		["Alt + G", "Games"],
+		["Alt + R", "Random game"],
+		["Alt + F", "Fullscreen the page or game"],
+		["Alt + L", "Lock (when a PIN is set)"],
+		[settings.panicKey || "—", "Panic: leave instantly"],
+		["?", "Show this list"],
+	];
+	$("#help-keys").innerHTML = keys.map(([k, d]) => `<span class="k">${k.split(" + ").map((x) => `<kbd>${esc(x)}</kbd>`).join(" + ")}</span><span>${esc(d)}</span>`).join("");
+	$("#help-dialog").showModal();
+}
+
 /* ---------------- cloaking & panic ---------------- */
 function openBlank(src = location.href) {
 	const win = window.open("about:blank", "_blank");
@@ -657,12 +897,32 @@ function handleKeys(e) {
 			return;
 		}
 	}
-	if (e.altKey && e.key.toLowerCase() === "t") {
+	if (isLocked()) return;
+	// e.code, because Alt+letter types special characters on Macs
+	if (e.altKey && !e.ctrlKey && !e.metaKey) {
+		const alt = {
+			KeyT: () => newTab(),
+			KeyW: () => closeTab(activeId),
+			KeyG: () => runAction("games"),
+			KeyR: () => runAction("game-random"),
+			KeyF: () => runAction("fullscreen"),
+			KeyL: () => lock() || toast("Set a PIN in Settings → Privacy first"),
+		}[e.code];
+		const digit = /^Digit([1-9])$/.exec(e.code);
+		if (alt) {
+			e.preventDefault();
+			alt();
+			return;
+		}
+		if (digit && tabs[digit[1] - 1]) {
+			e.preventDefault();
+			activate(tabs[digit[1] - 1].id);
+			return;
+		}
+	}
+	if (e.key === "?" && !typing && !$("#help-dialog").open) {
 		e.preventDefault();
-		newTab();
-	} else if (e.altKey && e.key.toLowerCase() === "w") {
-		e.preventDefault();
-		closeTab(activeId);
+		showHelp();
 	} else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {
 		e.preventDefault();
 		window.focus();
@@ -711,8 +971,27 @@ function runAction(action) {
 			else showActive();
 			break;
 		case "bookmark":
-			if (tab.kind !== "web" || !tab.url) return toast("Open a web page to add it as a shortcut");
-			editShortcut(-1, { name: (tab.title || "").slice(0, 24), url: tab.url, color: settings.accent });
+			toggleBookmark(tab);
+			break;
+		case "game-restart":
+			if (tab.game) launchGame(tab.game, tab);
+			break;
+		case "game-favorite":
+			if (!tab.game) return;
+			toast(toggleFavorite(tab.game.id) ? `Added ${tab.game.name} to favorites` : `Removed ${tab.game.name} from favorites`);
+			syncOmnibox();
+			break;
+		case "game-random":
+			loadGames().then(() => {
+				const game = randomGame();
+				if (game) launchGame(game, tab.kind === "game" || tab.kind === "newtab" ? tab : newTab("game"));
+			});
+			break;
+		case "game-fullscreen":
+			tab.iframe?.requestFullscreen?.();
+			break;
+		case "shortcuts-help":
+			showHelp();
 			break;
 		case "popout":
 			if (tab.kind !== "web" || !tab.iframe) return toast("Open a web page first");
@@ -759,6 +1038,49 @@ $("#engine-chip").onclick = () => {
 	toast(`Searching with ${engines[next].label}`);
 };
 
+/* ---------------- suggestions ---------------- */
+function localSuggestions(q) {
+	const games = searchGames(q, 2).map((g) => ({ type: "game", label: g.name, sub: "Game", value: g }));
+	const lower = q.toLowerCase();
+	const seen = new Set();
+	const past = [];
+	for (const h of history) {
+		if (past.length >= 3) break;
+		if (seen.has(h.url) || !((h.title || "").toLowerCase().includes(lower) || h.url.toLowerCase().includes(lower))) continue;
+		seen.add(h.url);
+		past.push({ type: "history", label: h.title || h.url, sub: h.url.replace(/^https?:\/\//, ""), value: h.url });
+	}
+	return [...games, ...past];
+}
+
+async function remoteSuggestions(q) {
+	if (!settings.suggestions) return [];
+	const text = await proxyFetchText(`https://duckduckgo.com/ac/?q=${encodeURIComponent(q)}&type=list`);
+	const data = JSON.parse(text);
+	return Array.isArray(data[1]) ? data[1] : data.map((d) => d.phrase).filter(Boolean);
+}
+
+function pickSuggestion(item, input) {
+	input.value = "";
+	input.blur();
+	const tab = activeTab();
+	if (item.type === "game") launchGame(item.value, tab);
+	else navigate(item.value, tab);
+}
+
+for (const id of ["#hero-input", "#omni-input"]) {
+	const input = $(id);
+	attachSuggest(input, { local: localSuggestions, remote: remoteSuggestions, onPick: (item) => pickSuggestion(item, input) });
+}
+loadGames().catch(() => {});
+
+/* ---------------- disguise when hidden ---------------- */
+document.addEventListener("visibilitychange", () => {
+	if (!settings.autoCloak) return;
+	if (document.hidden) applyCloak(settings.autoCloakPreset);
+	else applyCloak();
+});
+
 window.addEventListener("beforeunload", (e) => {
 	if (settings.confirmClose) {
 		e.preventDefault();
@@ -771,8 +1093,11 @@ onChange((patch) => {
 	applyAppearance();
 	if ("starCount" in patch) seedStars();
 	if ("shortcuts" in patch) renderShortcuts();
+	if ("bookmarks" in patch || "showBookmarksBar" in patch) renderBookmarks();
+	if ("showHomeGames" in patch && activeTab()?.kind === "newtab") renderHomeGames();
+	if ("restoreTabs" in patch) saveSession();
 	if ("use24h" in patch) tickClock();
-	if ("transport" in patch || "wisp" in patch) {
+	if ("transport" in patch || "wisp" in patch || "wispBackups" in patch) {
 		clearTimeout(transportTimer);
 		transportTimer = setTimeout(() => {
 			switchTransport()
@@ -793,7 +1118,10 @@ startBackground();
 tickClock();
 setInterval(tickClock, 1000);
 renderShortcuts();
-newTab();
+renderBookmarks();
+initLock();
+document.documentElement.classList.remove("pre-lock");
+if (!restoreSession()) newTab();
 
 if (settings.autoBlank && window.top === window) {
 	// pop-ups need a user gesture, so relaunch on the first click
@@ -805,14 +1133,15 @@ const status = $("#status-text");
 async function updateStatus() {
 	dot.className = "dot";
 	status.textContent = "Connecting to Wisp server…";
-	if (await checkWisp()) {
+	if (await checkWisp(wispUrl(), 45000)) {
 		dot.className = "dot ok";
-		status.textContent = "Proxy ready";
+		status.textContent = usingBackupWisp() ? "Proxy ready (using a backup server)" : "Proxy ready";
 	} else {
 		dot.className = "dot err";
-		status.textContent = `Can't reach Wisp server at ${wispUrl()} — set WISP_URL or change it in Settings`;
+		status.textContent = `Can't reach Wisp server at ${wispUrl()}. Click to retry, or change it in Settings`;
 	}
 }
+status.addEventListener("click", () => dot.classList.contains("err") && switchTransport().then(updateStatus, updateStatus));
 
 initProxy()
 	.then(updateStatus)

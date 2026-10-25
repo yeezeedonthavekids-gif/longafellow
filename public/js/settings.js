@@ -64,6 +64,13 @@ export const defaults = {
 
 	transport: "epoxy",
 	wisp: "",
+	wispBackups: "",
+	adblock: true,
+	suggestions: true,
+	restoreTabs: true,
+	showHomeGames: true,
+	showBookmarksBar: true,
+	bookmarks: [],
 
 	cloak: "none",
 	cloakTitle: "",
@@ -73,6 +80,11 @@ export const defaults = {
 	panicUrl: "https://classroom.google.com",
 	saveHistory: true,
 	confirmClose: false,
+	autoCloak: false,
+	autoCloakPreset: "classroom",
+	lockEnabled: false,
+	lockHash: "",
+	lockSalt: "",
 
 	shortcuts: [
 		{ name: "YouTube", url: "https://www.youtube.com", color: "#e11d48" },
@@ -204,16 +216,16 @@ export function searchTemplate() {
 	return (engines[settings.engine] || engines.google).url || engines.google.url;
 }
 
-export function applyCloak() {
+export function applyCloak(preset = settings.cloak) {
 	const s = settings;
 	let title = "Longafellow";
 	let icon = "/favicon.png";
-	if (s.cloak === "custom") {
+	if (preset === "custom") {
 		title = s.cloakTitle || title;
 		icon = s.cloakIcon || icon;
-	} else if (cloaks[s.cloak] && s.cloak !== "none") {
-		title = cloaks[s.cloak].title;
-		icon = cloaks[s.cloak].icon;
+	} else if (cloaks[preset] && preset !== "none") {
+		title = cloaks[preset].title;
+		icon = cloaks[preset].icon;
 	}
 	document.title = title;
 	document.getElementById("favicon").href = icon;

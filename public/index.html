@@ -12,6 +12,12 @@
 			href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;800&family=Poppins:wght@400;500;600;700;800&display=swap"
 		/>
 		<link rel="stylesheet" href="/style.css" />
+		<script>
+			// hide everything until the PIN screen is up, so nothing flashes on load
+			try {
+				if (JSON.parse(localStorage.getItem("longafellow:settings") || "{}").lockEnabled) document.documentElement.classList.add("pre-lock");
+			} catch {}
+		</script>
 		<script src="/config.js"></script>
 		<script src="/scramjet/scramjet.js"></script>
 		<script src="/controller/controller.api.js"></script>
@@ -62,11 +68,18 @@
 							<input id="omni-input" spellcheck="false" placeholder="Search or enter a URL" />
 							<span class="omni-hint" id="omni-engine">GOOGLE</span>
 						</form>
+						<div class="nav-btns game-actions" id="game-actions" hidden>
+							<button data-action="game-restart" title="Restart game"><i data-icon="restart"></i></button>
+							<button data-action="game-favorite" id="game-fav-btn" title="Favorite game"><i data-icon="star"></i></button>
+							<button data-action="game-random" title="Random game (Alt+R)"><i data-icon="shuffle"></i></button>
+							<button data-action="game-fullscreen" title="Fullscreen game (Alt+F)"><i data-icon="expand"></i></button>
+						</div>
 						<div class="nav-btns">
-							<button data-action="bookmark" id="bookmark-btn" title="Add to shortcuts"><i data-icon="star"></i></button>
+							<button data-action="bookmark" id="bookmark-btn" title="Bookmark this page"><i data-icon="bookmark"></i></button>
 							<button data-action="popout" title="Open page in about:blank"><i data-icon="external"></i></button>
 						</div>
 					</div>
+					<div id="bookmarks-bar" hidden></div>
 				</header>
 
 				<section id="viewport">
@@ -87,9 +100,11 @@
 								<button type="button" class="engine-chip" id="engine-chip" title="Change search engine"></button>
 							</form>
 							<div class="shortcuts" id="shortcuts"></div>
+							<div class="home-games" id="home-games" hidden></div>
 						</div>
 						<footer class="nt-footer">
 							<span id="status-dot" class="dot"></span><span id="status-text">Starting proxy…</span>
+							<span class="sep">·</span><button class="link" data-action="shortcuts-help">Press <kbd>?</kbd> for shortcuts</button>
 						</footer>
 					</div>
 
@@ -113,6 +128,35 @@
 				</div>
 			</form>
 		</dialog>
+
+		<dialog id="help-dialog">
+			<h3>Keyboard shortcuts</h3>
+			<div class="keys" id="help-keys"></div>
+			<div class="dialog-actions"><button class="btn" onclick="this.closest('dialog').close()">Done</button></div>
+		</dialog>
+
+		<dialog id="pin-dialog">
+			<form method="dialog" id="pin-form">
+				<h3>Set a PIN</h3>
+				<p class="dialog-note">You'll need it to open Longafellow on this browser. It keeps casual onlookers out, but it isn't strong security.</p>
+				<label>New PIN<input name="pin" type="password" inputmode="numeric" minlength="4" maxlength="12" required autocomplete="new-password" /></label>
+				<label>Confirm PIN<input name="confirm" type="password" inputmode="numeric" minlength="4" maxlength="12" required autocomplete="new-password" /></label>
+				<div class="dialog-actions">
+					<button value="cancel" formnovalidate class="btn ghost">Cancel</button>
+					<button value="save" class="btn">Save PIN</button>
+				</div>
+			</form>
+		</dialog>
+
+		<div id="lock" hidden>
+			<form id="lock-form" autocomplete="off">
+				<img src="/assets/logo.png" alt="" />
+				<h2>Locked</h2>
+				<input id="lock-input" type="password" inputmode="numeric" placeholder="Enter PIN" autocomplete="off" />
+				<button class="btn" type="submit">Unlock</button>
+				<div id="lock-error"></div>
+			</form>
+		</div>
 
 		<div id="toast"></div>
 

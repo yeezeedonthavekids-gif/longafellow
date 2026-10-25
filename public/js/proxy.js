@@ -1,18 +1,54 @@
 import { settings } from "./settings.js";
+import { isBlocked, countBlocked } from "./adblock.js";
 
 // Wires Scramjet (v2, via @mercuryworkshop/scramjet-controller) to a Wisp transport.
 let controller = null;
 let readyPromise = null;
+let activeWisp = null;
+
+const splitList = (v) => (Array.isArray(v) ? v : String(v || "").split(/[\s,]+/)).map((s) => s.trim()).filter(Boolean);
+
+// Every Wisp server we know about, in priority order.
+export function wispCandidates() {
+	const config = self.LONGAFELLOW_CONFIG || {};
+	const sameHost = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/wisp/`;
+	const list = [settings.wisp, config.wisp, ...splitList(settings.wispBackups), ...splitList(config.wispBackups), sameHost];
+	return [...new Set(list.filter(Boolean))];
+}
 
 export function wispUrl() {
-	if (settings.wisp) return settings.wisp;
-	if (self.LONGAFELLOW_CONFIG?.wisp) return self.LONGAFELLOW_CONFIG.wisp;
-	return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/wisp/`;
+	return activeWisp || wispCandidates()[0];
+}
+
+export function usingBackupWisp() {
+	return activeWisp !== null && activeWisp !== wispCandidates()[0];
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Picks the first server that answers. The main server gets a few seconds' head start,
+// because a sleeping free-tier host can take a while to wake up.
+async function pickWisp() {
+	const candidates = wispCandidates();
+	if (candidates.length === 1) return candidates[0];
+	const checks = candidates.map((url) => checkWisp(url, 45000));
+	if (await Promise.race([checks[0], sleep(5000).then(() => false)])) return candidates[0];
+	const winner = await new Promise((resolve) => {
+		let pending = checks.length;
+		checks.forEach((p, i) =>
+			p.then((ok) => {
+				if (ok) resolve(candidates[i]);
+				else if (--pending === 0) resolve(null);
+			}),
+		);
+	});
+	return winner || candidates[0];
 }
 
 async function makeTransport() {
+	activeWisp = await pickWisp();
 	const mod = settings.transport === "libcurl" ? await import("/libcurl/index.mjs") : await import("/epoxy/index.mjs");
-	const transport = new mod.default({ wisp: wispUrl() });
+	const transport = new mod.default({ wisp: activeWisp });
 	await transport.init();
 	return transport;
 }
@@ -43,6 +79,20 @@ export async function switchTransport() {
 export async function createFrame(iframe) {
 	await initProxy();
 	const frame = controller.createFrame(iframe);
+	// built-in ad & tracker blocking
+	$scramjet.Tap.tap(frame.hooks.fetch.request, (ctx, props) => {
+		if (!settings.adblock) return;
+		let host;
+		try {
+			host = new URL(String(props.url)).hostname;
+		} catch {
+			return;
+		}
+		if (isBlocked(host)) {
+			countBlocked();
+			props.earlyResponse = new Response(null, { status: 204, statusText: "Blocked" });
+		}
+	});
 	// show a readable page instead of a raw stack trace when a page fails to load
 	$scramjet.Tap.tap(frame.hooks.error.request, (ctx, props) => {
 		const dest = ctx.rawrequest.destination;

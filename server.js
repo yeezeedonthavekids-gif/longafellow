@@ -61,6 +61,12 @@ function resolveFile(pathname) {
 
 const server = http.createServer((req, res) => {
 	const { pathname } = new URL(req.url, "http://localhost");
+	// for uptime monitors (keeps a free-tier host awake)
+	if (pathname === "/health") {
+		res.writeHead(200, { "Content-Type": "text/plain", "Cache-Control": "no-store" });
+		res.end("ok");
+		return;
+	}
 	const found = resolveFile(pathname);
 	if (!found) {
 		res.writeHead(404, { "Content-Type": "text/plain" });

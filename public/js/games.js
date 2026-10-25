@@ -79,6 +79,49 @@ export function markPlayed(game) {
 	writeList(RECENT_KEY, recent);
 }
 
+export function isFavorite(id) {
+	return favorites.has(id);
+}
+
+export function toggleFavorite(id) {
+	if (favorites.has(id)) favorites.delete(id);
+	else favorites.add(id);
+	writeList(FAV_KEY, [...favorites]);
+	return favorites.has(id);
+}
+
+export function recentGames(n = 6) {
+	return recent.map(getGame).filter(Boolean).slice(0, n);
+}
+
+export function featuredGames(n = 6) {
+	const list = (games || []).filter((g) => g.featured);
+	for (let i = list.length - 1; i > 0; i--) {
+		const j = Math.floor(Math.random() * (i + 1));
+		[list[i], list[j]] = [list[j], list[i]];
+	}
+	return list.slice(0, n);
+}
+
+export function randomGame() {
+	return games?.length ? games[Math.floor(Math.random() * games.length)] : null;
+}
+
+// Name matches, best first: names starting with the query, then containing it.
+export function searchGames(q, n = 3) {
+	if (!games) return [];
+	const query = q.toLowerCase();
+	const starts = [];
+	const contains = [];
+	for (const g of games) {
+		const name = g.name.toLowerCase();
+		if (name.startsWith(query)) starts.push(g);
+		else if (name.includes(query)) contains.push(g);
+		if (starts.length >= n) break;
+	}
+	return [...starts, ...contains].slice(0, n);
+}
+
 function sorted(list) {
 	if (state.filter === "recent") {
 		const order = new Map(recent.map((id, i) => [id, i]));
@@ -134,6 +177,7 @@ export async function renderGames(page, { onLaunch, onError }) {
 		return;
 	}
 	if (built) {
+		favorites = new Set(readList(FAV_KEY));
 		renderGrid(page);
 		return;
 	}
@@ -149,6 +193,7 @@ export async function renderGames(page, { onLaunch, onError }) {
 			<label class="game-search">${icon("search")}<input type="search" placeholder="Search games…" spellcheck="false"></label>
 			<div class="game-filters">${filters.map(([k, l]) => `<button data-filter="${k}" class="${state.filter === k ? "active" : ""}">${l}</button>`).join("")}</div>
 			<select class="game-sort"><option value="featured">Featured first</option><option value="az">A–Z</option><option value="new">Newest</option></select>
+			<button class="btn game-random">${icon("shuffle")} Surprise me</button>
 		</div>
 		<div class="game-count"></div>
 		<div class="game-grid"></div>`;
@@ -158,6 +203,7 @@ export async function renderGames(page, { onLaunch, onError }) {
 		state.query = search.value;
 		renderGrid(page);
 	});
+	page.querySelector(".game-random").addEventListener("click", () => onLaunch(randomGame()));
 	page.querySelector(".game-sort").addEventListener("change", (e) => {
 		state.sort = e.target.value;
 		renderGrid(page);
@@ -175,10 +221,7 @@ export async function renderGames(page, { onLaunch, onError }) {
 		if (!card) return;
 		const game = getGame(Number(card.dataset.id));
 		if (e.target.closest(".game-fav")) {
-			if (favorites.has(game.id)) favorites.delete(game.id);
-			else favorites.add(game.id);
-			writeList(FAV_KEY, [...favorites]);
-			e.target.closest(".game-fav").classList.toggle("on", favorites.has(game.id));
+			e.target.closest(".game-fav").classList.toggle("on", toggleFavorite(game.id));
 			if (state.filter === "favorites") renderGrid(page);
 			return;
 		}

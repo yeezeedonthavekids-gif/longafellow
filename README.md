@@ -32,6 +32,12 @@ Wisp is the WebSocket backend that actually fetches pages. You need both parts:
 
 Users can also point to a different Wisp server in *Settings → Search & proxy*.
 
+**Backup servers:** deploy the repo to a second host (e.g. Railway or Fly.io) and set `WISP_BACKUPS` on Netlify
+(comma-separated `wss://…/wisp/` URLs). If the main server doesn't answer, Longafellow switches to a backup automatically.
+
+**Keep Render awake:** free Render services sleep after 15 minutes. Point a free uptime monitor
+(UptimeRobot, cron-job.org) at `https://<your-service>.onrender.com/health` every 10 minutes.
+
 ### Fastly
 
 - Fastly can sit in front of Netlify as a CDN. Make sure `/sw.js` and `/config.js` aren't cached long (they're sent with `Cache-Control: no-cache`).
@@ -56,12 +62,18 @@ Everything is in **Settings** (gear icon) and is saved in the browser:
 
 - **Appearance:** 8 blue theme presets, accent/secondary/background/text colors, font, UI size, corner roundness, glass blur, panel opacity, glow
 - **Background:** starfield, aurora, gradient, solid color, or a custom image, plus star count and speed and a reduce-motion option
-- **Home page:** title text, tagline, gradient title, and toggles for the logo, clock, shortcuts and side bar. Shortcuts can be added, edited (right-click) or removed
-- **Search & proxy:** search engine (or a custom `%s` URL), Epoxy/libcurl transport, custom Wisp server
-- **Privacy:** tab cloak presets, about:blank launcher (or auto-launch), panic key + URL, history toggle, confirm-on-close
-- **Data:** export/import settings as JSON, reset
+- **Home page:** title text, tagline, gradient title, and toggles for the logo, clock, shortcuts, games row, side bar and bookmarks bar. Shortcuts can be added, edited (right-click) or removed. You can also choose to reopen your tabs from last time
+- **Search & proxy:** search engine (or a custom `%s` URL), search suggestions, ad & tracker blocking, Epoxy/libcurl transport, a custom Wisp server and backup servers
+- **Privacy:** tab cloak presets, a disguise used when you switch to another tab, PIN lock, about:blank launcher (or auto-launch), panic key + URL, history toggle, confirm-on-close
+- **Data:** a full backup and restore (settings, history, bookmarks and game saves), settings-only export/import, reset
 
-Shortcuts: `Alt+T` new tab · `Alt+W` close tab · `Ctrl+L` address bar · `/` focus search · panic key (default `` ` ``).
+Press `?` in the app for all keyboard shortcuts: `Alt+T` new tab · `Alt+W` close tab · `Alt+1–9` switch tabs · `Ctrl+L` address bar ·
+`/` search · `Alt+G` games · `Alt+R` random game · `Alt+F` fullscreen · `Alt+L` lock · panic key (default `` ` ``).
+
+### Moving game saves between sites
+
+Each site (for example `lfhub.netlify.app` and `longlearning.netlify.app`) keeps its own saves. To move them, go to
+*Settings → Data → Back up everything* on one site, then *Restore a backup* on the other.
 
 To change the code defaults, edit `public/js/settings.js`. To change the logo, replace `public/assets/logo.png` and `public/favicon.png`.
 

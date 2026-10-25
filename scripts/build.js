@@ -23,8 +23,9 @@ for (const [dir, [src, files]] of Object.entries(copies)) {
 }
 
 const wisp = process.env.WISP_URL || "wss://longafellow.onrender.com/wisp/";
+const wispBackups = (process.env.WISP_BACKUPS || "").split(/[\s,]+/).filter(Boolean);
 writeFileSync(
 	join(out, "config.js"),
-	`self.LONGAFELLOW_CONFIG = ${JSON.stringify({ wisp }, null, "\t")};\n`,
+	`self.LONGAFELLOW_CONFIG = ${JSON.stringify({ wisp, wispBackups }, null, "\t")};\n`,
 );
-console.log(`Built dist/ (wisp: ${wisp})`);
+console.log(`Built dist/ (wisp: ${wisp}${wispBackups.length ? `, backups: ${wispBackups.join(", ")}` : ""})`);
