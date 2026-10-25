@@ -86,22 +86,26 @@
 					<!-- internal pages -->
 					<div id="page-newtab" class="page">
 						<div class="hero">
-							<div class="clock-wrap" id="clock-wrap">
+							<div class="clock-wrap" id="clock-wrap" data-section="clock">
 								<div class="date" id="date"></div>
 								<div class="time" id="time"></div>
 								<div class="greeting" id="greeting"></div>
 							</div>
-							<img class="hero-logo" id="hero-logo" src="/assets/logo.png" alt="" />
-							<h1 class="wordmark" id="wordmark">LONGAFELLOW</h1>
-							<p class="tagline" id="tagline"></p>
-							<form class="search" id="hero-search" autocomplete="off">
+							<img class="hero-logo" id="hero-logo" src="/assets/logo.png" alt="" data-section="logo" />
+							<div class="title-block" data-section="title">
+								<h1 class="wordmark" id="wordmark">LONGAFELLOW</h1>
+								<p class="tagline" id="tagline"></p>
+							</div>
+							<form class="search" id="hero-search" autocomplete="off" data-section="search">
 								<i data-icon="search"></i>
 								<input id="hero-input" spellcheck="false" placeholder="Search or enter a URL" />
 								<button type="button" class="engine-chip" id="engine-chip" title="Change search engine"></button>
 							</form>
-							<div class="shortcuts" id="shortcuts"></div>
-							<div class="home-games" id="home-games" hidden></div>
+							<div class="shortcuts" id="shortcuts" data-section="shortcuts"></div>
+							<div class="home-games" id="home-games" data-section="games" hidden></div>
+							<div class="widgets" id="widgets" data-section="widgets" hidden></div>
 						</div>
+						<button class="customize-btn" data-action="customize" title="Customize home page"><i data-icon="edit"></i><span>Customize</span></button>
 						<footer class="nt-footer">
 							<span id="status-dot" class="dot"></span><span id="status-text">Starting proxy…</span>
 							<span class="sep">·</span><button class="link" data-action="shortcuts-help">Press <kbd>?</kbd> for shortcuts</button>
@@ -127,6 +131,25 @@
 					<button value="save" class="btn">Save</button>
 				</div>
 			</form>
+		</dialog>
+
+		<dialog id="home-editor">
+			<div class="editor-head">
+				<h3>Customize home page</h3>
+				<button class="btn" onclick="this.closest('dialog').close()">Done</button>
+			</div>
+			<h4>Sections</h4>
+			<p class="dialog-note">Drag to reorder (or use the arrows). Switch sections on or off.</p>
+			<ul class="section-list" id="section-list"></ul>
+			<h4>Widgets</h4>
+			<div class="widget-picks" id="widget-picks"></div>
+			<h4>Wallpaper</h4>
+			<div class="wallpaper-picks" id="wallpaper-picks"></div>
+			<div class="wallpaper-row">
+				<input id="wallpaper-url" type="url" placeholder="Paste an image link…" spellcheck="false" />
+				<button class="btn ghost" id="wallpaper-apply">Use link</button>
+				<button class="btn ghost" id="wallpaper-upload"><i data-icon="image"></i> Upload</button>
+			</div>
 		</dialog>
 
 		<dialog id="help-dialog">

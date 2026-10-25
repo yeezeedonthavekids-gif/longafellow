@@ -62,7 +62,7 @@ Everything is in **Settings** (gear icon) and is saved in the browser:
 
 - **Appearance:** 8 blue theme presets, accent/secondary/background/text colors, font, UI size, corner roundness, glass blur, panel opacity, glow
 - **Background:** starfield, aurora, gradient, solid color, or a custom image, plus star count and speed and a reduce-motion option
-- **Home page:** title text, tagline, gradient title, and toggles for the logo, clock, shortcuts, games row, side bar and bookmarks bar. Shortcuts can be added, edited (right-click) or removed. You can also choose to reopen your tabs from last time
+- **Home page:** use the **Customize** button to drag sections into any order, turn them on or off, pick widgets (to-do list, notes, timer, calendar) and change the wallpaper, including uploading your own image. Also: title text, tagline, gradient title, side bar and bookmarks bar. Shortcuts can be added, edited (right-click) or removed. You can also choose to reopen your tabs from last time
 - **Search & proxy:** search engine (or a custom `%s` URL), search suggestions, ad & tracker blocking, Epoxy/libcurl transport, a custom Wisp server and backup servers
 - **Privacy:** tab cloak presets, a disguise used when you switch to another tab, PIN lock, about:blank launcher (or auto-launch), panic key + URL, history toggle, confirm-on-close
 - **Data:** a full backup and restore (settings, history, bookmarks and game saves), settings-only export/import, reset

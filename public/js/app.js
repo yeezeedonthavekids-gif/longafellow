@@ -35,6 +35,8 @@ import { blockedSoFar } from "./adblock.js";
 import { exportAll, importAll, downloadJSON } from "./saves.js";
 import { attachSuggest } from "./suggest.js";
 import { initLock, lock, setPin, clearPin, isLocked } from "./lock.js";
+import { renderWidgets, WIDGETS } from "./widgets.js";
+import { saveWallpaper, wallpaperUrl } from "./wallpaper.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -429,6 +431,150 @@ function pollTab(tab) {
 
 setInterval(() => tabs.forEach(pollTab), 600);
 
+/* ---------------- home page editor ---------------- */
+const HOME_SECTIONS = {
+	clock: { label: "Clock & greeting", keys: ["showClock"] },
+	logo: { label: "Logo", keys: ["showLogo"] },
+	title: { label: "Title & tagline", keys: ["showWordmark", "showTagline"] },
+	search: { label: "Search bar" },
+	shortcuts: { label: "Shortcuts", keys: ["showShortcuts"] },
+	games: { label: "Games", keys: ["showHomeGames"] },
+	widgets: { label: "Widgets", keys: ["showWidgets"] },
+};
+const WALLPAPERS = [
+	["stars", "Starfield"],
+	["aurora", "Aurora"],
+	["gradient", "Gradient"],
+	["solid", "Solid color"],
+];
+
+function homeOrder() {
+	const order = settings.homeOrder.filter((id) => HOME_SECTIONS[id]);
+	return [...order, ...Object.keys(HOME_SECTIONS).filter((id) => !order.includes(id))];
+}
+
+function renderHomeWidgets() {
+	renderWidgets($("#widgets"), settings.showWidgets ? settings.widgets : [], { toast });
+}
+
+async function applyWallpaper() {
+	if (settings.background !== "image" || settings.bgImage !== "local") return;
+	const url = await wallpaperUrl();
+	$("#bg-image").style.backgroundImage = url ? `url("${url}")` : "";
+}
+
+function uploadWallpaper() {
+	const input = document.createElement("input");
+	input.type = "file";
+	input.accept = "image/*";
+	input.onchange = async () => {
+		const file = input.files[0];
+		if (!file) return;
+		if (file.size > 15e6) return toast("That image is over 15 MB. Try a smaller one.");
+		try {
+			await saveWallpaper(file);
+			set({ background: "image", bgImage: "local" });
+			await applyWallpaper();
+			toast("Wallpaper updated");
+		} catch (e) {
+			toast("Couldn't save the image: " + e.message);
+		}
+	};
+	input.click();
+}
+
+function renderEditor() {
+	const order = homeOrder();
+	$("#section-list").innerHTML = order
+		.map((id, i) => {
+			const sec = HOME_SECTIONS[id];
+			const on = !sec.keys || sec.keys.some((k) => settings[k]);
+			const toggle = sec.keys
+				? `<label class="switch"><input type="checkbox" data-toggle="${id}" ${on ? "checked" : ""}><span></span></label>`
+				: `<span class="always">Always on</span>`;
+			return `<li draggable="true" data-id="${id}"><span class="grip" title="Drag to move">${icon("grip")}</span><span class="name">${sec.label}</span>
+				<button class="w-btn" data-move="-1" title="Move up" ${i === 0 ? "disabled" : ""}>${icon("up")}</button>
+				<button class="w-btn" data-move="1" title="Move down" ${i === order.length - 1 ? "disabled" : ""}>${icon("down")}</button>${toggle}</li>`;
+		})
+		.join("");
+	$("#widget-picks").innerHTML = Object.entries(WIDGETS)
+		.map(([id, w]) => `<button class="pick ${settings.widgets.includes(id) ? "on" : ""}" data-widget="${id}">${icon(w.icon)}${w.label}</button>`)
+		.join("");
+	const bg = settings.background;
+	$("#wallpaper-picks").innerHTML =
+		WALLPAPERS.map(([id, label]) => `<button class="pick ${bg === id ? "on" : ""}" data-wallpaper="${id}">${label}</button>`).join("") +
+		(bg === "image" ? `<button class="pick on">${icon("image")}${settings.bgImage === "local" ? "Your upload" : "Image link"}</button>` : "");
+	$("#wallpaper-url").value = settings.bgImage === "local" ? "" : settings.bgImage;
+}
+
+function openHomeEditor() {
+	renderEditor();
+	$("#home-editor").showModal();
+}
+
+function moveSection(id, toIndex) {
+	const order = homeOrder().filter((x) => x !== id);
+	order.splice(Math.max(0, Math.min(toIndex, order.length)), 0, id);
+	set({ homeOrder: order });
+}
+
+$("#section-list").addEventListener("click", (e) => {
+	const btn = e.target.closest("[data-move]");
+	if (!btn) return;
+	const id = btn.closest("li").dataset.id;
+	moveSection(id, homeOrder().indexOf(id) + Number(btn.dataset.move));
+});
+$("#section-list").addEventListener("change", (e) => {
+	const id = e.target.dataset.toggle;
+	if (!id) return;
+	set(Object.fromEntries(HOME_SECTIONS[id].keys.map((k) => [k, e.target.checked])));
+});
+let dragId = null;
+$("#section-list").addEventListener("dragstart", (e) => {
+	const li = e.target.closest("li");
+	dragId = li.dataset.id;
+	li.classList.add("dragging");
+	e.dataTransfer.effectAllowed = "move";
+});
+$("#section-list").addEventListener("dragover", (e) => {
+	const li = e.target.closest("li");
+	if (!li || !dragId) return;
+	e.preventDefault();
+	for (const x of $("#section-list").children) x.classList.toggle("over", x === li);
+});
+$("#section-list").addEventListener("drop", (e) => {
+	const li = e.target.closest("li");
+	if (!li || !dragId) return;
+	e.preventDefault();
+	const order = homeOrder();
+	let to = order.indexOf(li.dataset.id);
+	// dropping on the lower half of a row puts it after that row
+	const r = li.getBoundingClientRect();
+	if (e.clientY > r.top + r.height / 2) to++;
+	if (order.indexOf(dragId) < to) to--;
+	moveSection(dragId, to);
+});
+$("#section-list").addEventListener("dragend", () => {
+	dragId = null;
+	for (const x of $("#section-list").children) x.classList.remove("over", "dragging");
+});
+$("#widget-picks").addEventListener("click", (e) => {
+	const id = e.target.closest("[data-widget]")?.dataset.widget;
+	if (!id) return;
+	const on = settings.widgets.includes(id);
+	set({ widgets: on ? settings.widgets.filter((w) => w !== id) : [...settings.widgets, id], showWidgets: true });
+});
+$("#wallpaper-picks").addEventListener("click", (e) => {
+	const id = e.target.closest("[data-wallpaper]")?.dataset.wallpaper;
+	if (id) set({ background: id });
+});
+$("#wallpaper-apply").onclick = () => {
+	const url = $("#wallpaper-url").value.trim();
+	if (!/^https?:\/\//i.test(url)) return toast("Paste a full image link starting with https://");
+	set({ background: "image", bgImage: url });
+};
+$("#wallpaper-upload").onclick = uploadWallpaper;
+
 /* ---------------- new tab page ---------------- */
 let homeFeatured = null;
 
@@ -582,7 +728,8 @@ const sections = [
 					["image", "Custom image"],
 				],
 			},
-			{ key: "bgImage", type: "text", name: "Image URL", desc: "Any direct image link.", placeholder: "https://…/wallpaper.jpg", when: (s) => s.background === "image" },
+			{ key: "bgImage", type: "text", name: "Image URL", desc: "Any direct image link.", placeholder: "https://…/wallpaper.jpg", when: (s) => s.background === "image" && s.bgImage !== "local" },
+			{ type: "button", name: "Upload a wallpaper", desc: "Use an image from your device. It's stored in this browser.", label: () => (settings.bgImage === "local" && settings.background === "image" ? "Replace" : "Upload"), run: () => uploadWallpaper() },
 			{ key: "starCount", type: "range", name: "Star count", min: 0, max: 1000, when: (s) => s.background === "stars" || s.background === "image" },
 			{ key: "starSpeed", type: "range", name: "Star drift speed", min: 0, max: 100, when: (s) => s.background === "stars" || s.background === "image" },
 			{ key: "reduceMotion", type: "toggle", name: "Reduce motion", desc: "Freeze stars, glows and the floating logo." },
@@ -602,7 +749,9 @@ const sections = [
 			{ key: "showClock", type: "toggle", name: "Show clock & greeting" },
 			{ key: "use24h", type: "toggle", name: "24-hour clock", when: (s) => s.showClock },
 			{ key: "showShortcuts", type: "toggle", name: "Show shortcuts", desc: "Right-click a shortcut to edit it." },
+			{ type: "button", name: "Customize home page", desc: "Reorder sections, choose widgets and change the wallpaper.", label: "Customize", run: () => openHomeEditor() },
 			{ key: "showHomeGames", type: "toggle", name: "Show games on the home page", desc: "Your recent games, or featured ones if you haven't played any." },
+			{ key: "showWidgets", type: "toggle", name: "Show widgets", desc: "To-do list, notes, timer and calendar. Pick them in Customize." },
 			{ key: "showRail", type: "toggle", name: "Show side bar" },
 			{ key: "showBookmarksBar", type: "toggle", name: "Show bookmarks bar", desc: "Bookmark pages and games with the bookmark button next to the address bar." },
 			{ key: "restoreTabs", type: "toggle", name: "Reopen tabs from last time", desc: "Pages and games reload when you click their tab." },
@@ -993,6 +1142,9 @@ function runAction(action) {
 		case "shortcuts-help":
 			showHelp();
 			break;
+		case "customize":
+			openHomeEditor();
+			break;
 		case "popout":
 			if (tab.kind !== "web" || !tab.iframe) return toast("Open a web page first");
 			openBlank(tab.iframe.contentWindow.location.href);
@@ -1096,6 +1248,9 @@ onChange((patch) => {
 	if ("bookmarks" in patch || "showBookmarksBar" in patch) renderBookmarks();
 	if ("showHomeGames" in patch && activeTab()?.kind === "newtab") renderHomeGames();
 	if ("restoreTabs" in patch) saveSession();
+	if ("widgets" in patch || "showWidgets" in patch) renderHomeWidgets();
+	if ("background" in patch || "bgImage" in patch) applyWallpaper();
+	if ($("#home-editor").open) renderEditor();
 	if ("use24h" in patch) tickClock();
 	if ("transport" in patch || "wisp" in patch || "wispBackups" in patch) {
 		clearTimeout(transportTimer);
@@ -1119,6 +1274,8 @@ tickClock();
 setInterval(tickClock, 1000);
 renderShortcuts();
 renderBookmarks();
+renderHomeWidgets();
+applyWallpaper();
 initLock();
 document.documentElement.classList.remove("pre-lock");
 if (!restoreSession()) newTab();

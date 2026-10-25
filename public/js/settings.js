@@ -69,6 +69,9 @@ export const defaults = {
 	suggestions: true,
 	restoreTabs: true,
 	showHomeGames: true,
+	showWidgets: true,
+	widgets: ["todo", "timer", "calendar"],
+	homeOrder: ["clock", "logo", "title", "search", "shortcuts", "games", "widgets"],
 	showBookmarksBar: true,
 	bookmarks: [],
 
@@ -193,11 +196,17 @@ export function applyAppearance() {
 	body.toggle("hide-wordmark", !s.showWordmark);
 	body.toggle("hide-tagline", !s.showTagline);
 	body.toggle("hide-shortcuts", !s.showShortcuts);
+	body.toggle("hide-home-games", !s.showHomeGames);
+	body.toggle("hide-widgets", !s.showWidgets);
+	// home page section order
+	const order = [...s.homeOrder, ...defaults.homeOrder.filter((id) => !s.homeOrder.includes(id))];
+	order.forEach((id, i) => document.querySelector(`.hero [data-section="${id}"]`)?.style.setProperty("order", i));
 	body.toggle("rail-hidden", !s.showRail);
 	body.toggle("wordmark-solid", !s.wordmarkGradient);
 
 	const img = document.getElementById("bg-image");
-	img.style.backgroundImage = s.background === "image" && s.bgImage ? `url("${s.bgImage.replace(/"/g, "%22")}")` : "";
+	// an uploaded wallpaper ("local") is applied by the app once it's read from storage
+	if (s.bgImage !== "local") img.style.backgroundImage = s.background === "image" && s.bgImage ? `url("${s.bgImage.replace(/"/g, "%22")}")` : "";
 
 	document.getElementById("wordmark").textContent = s.wordmarkText || "LONGAFELLOW";
 	document.getElementById("tagline").textContent = s.tagline;
