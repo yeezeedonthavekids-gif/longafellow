@@ -16,6 +16,7 @@ import {
 } from "./settings.js";
 import { startBackground, seedStars } from "./background.js";
 import { initProxy, createFrame, realUrl, switchTransport, wispUrl, checkWisp } from "./proxy.js";
+import { renderGames, loadGames, getGame, markPlayed, GAME_HTML, GAME_COVERS } from "./games.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -24,6 +25,7 @@ const INTERNAL = {
 	newtab: { title: "New Tab", url: "longafellow://newtab" },
 	settings: { title: "Settings", url: "longafellow://settings" },
 	history: { title: "History", url: "longafellow://history" },
+	games: { title: "Games", url: "longafellow://games" },
 };
 
 /* ---------------- toast ---------------- */
@@ -109,7 +111,7 @@ function activate(id) {
 function showActive() {
 	const tab = activeTab();
 	for (const page of document.querySelectorAll(".page")) page.classList.remove("show");
-	for (const t of tabs) t.iframe?.classList.toggle("show", t === tab && t.kind === "web");
+	for (const t of tabs) t.iframe?.classList.toggle("show", t === tab && (t.kind === "web" || t.kind === "game"));
 	if (tab.kind === "newtab") $("#page-newtab").classList.add("show");
 	if (tab.kind === "settings") {
 		renderSettings();
@@ -118,6 +120,10 @@ function showActive() {
 	if (tab.kind === "history") {
 		renderHistory();
 		$("#page-history").classList.add("show");
+	}
+	if (tab.kind === "games") {
+		renderGames($("#page-games"), { onLaunch: (game) => launchGame(game, newTab("game")) });
+		$("#page-games").classList.add("show");
 	}
 	for (const b of document.querySelectorAll("#rail [data-action]")) {
 		b.classList.toggle("active", b.dataset.action === (tab.kind === "newtab" ? "home" : tab.kind));
@@ -131,7 +137,8 @@ function syncOmnibox() {
 	if (!tab) return;
 	const input = $("#omni-input");
 	if (document.activeElement !== input) {
-		input.value = tab.kind === "web" ? tab.url || "" : tab.kind === "newtab" ? "" : INTERNAL[tab.kind].url;
+		input.value =
+			tab.kind === "web" ? tab.url || "" : tab.kind === "game" ? `longafellow://games/${tab.game?.id ?? ""}` : tab.kind === "newtab" ? "" : INTERNAL[tab.kind].url;
 	}
 	const secure = tab.kind === "web" && tab.url?.startsWith("https:");
 	$("#omni-scheme").innerHTML = icon(secure ? "lock" : tab.kind === "web" ? "globe" : "search");
@@ -164,10 +171,27 @@ function renderTabs() {
 	}
 }
 
+// Destroys a tab's page so its audio/video stops instead of playing in the background.
+function unloadPage(tab) {
+	tab.iframe?.remove();
+	tab.iframe = null;
+	tab.frame = null;
+	tab.game = null;
+	tab.url = null;
+	tab.loading = false;
+}
+
 async function navigate(input, tab = activeTab()) {
 	const text = input.trim();
+	const gameMatch = /^longafellow:\/\/games\/(-?\d+)$/i.exec(text);
+	if (gameMatch) {
+		await loadGames().catch(() => {});
+		const game = getGame(Number(gameMatch[1]));
+		if (game) return launchGame(game, tab);
+	}
 	const internal = Object.entries(INTERNAL).find(([, v]) => v.url === text.toLowerCase());
 	if (internal) {
+		unloadPage(tab);
 		tab.kind = internal[0];
 		tab.title = INTERNAL[tab.kind].title;
 		tab.favicon = null;
@@ -178,6 +202,7 @@ async function navigate(input, tab = activeTab()) {
 	const url = toUrl(text);
 	if (!url) return;
 
+	if (tab.kind === "game") unloadPage(tab);
 	tab.kind = "web";
 	tab.url = url;
 	tab.title = url.replace(/^https?:\/\//, "");
@@ -215,6 +240,41 @@ function onFrameLoad(tab) {
 		// cross-origin (e.g. the proxy errored); nothing to hook
 	}
 	pollTab(tab);
+}
+
+async function launchGame(game, tab = activeTab()) {
+	unloadPage(tab);
+	const iframe = document.createElement("iframe");
+	iframe.setAttribute("allow", "fullscreen; autoplay; gamepad; clipboard-read; clipboard-write; pointer-lock");
+	Object.assign(tab, { kind: "game", game, iframe, title: game.name, favicon: GAME_COVERS + game.cover, loading: true });
+	$("#frames").append(iframe);
+	renderTabs();
+	if (tab.id === activeId) showActive();
+	markPlayed(game);
+	recordHistory(`longafellow://games/${game.id}`, game.name);
+
+	let html;
+	try {
+		const res = await fetch(GAME_HTML + game.file);
+		if (!res.ok) throw new Error(`HTTP ${res.status}`);
+		html = await res.text();
+	} catch (err) {
+		html = `<body style="margin:0;display:grid;place-items:center;height:100vh;background:${settings.bg};color:${settings.text};font-family:system-ui">
+			<div style="text-align:center"><h2>Couldn't load ${esc(game.name)}</h2><p style="opacity:.7">${esc(err.message)} — the game CDN (cdn.jsdelivr.net) may be blocked or offline.</p></div></body>`;
+	}
+	// the tab may have been closed or sent elsewhere while we were downloading
+	if (tab.iframe !== iframe) return;
+	const doc = iframe.contentDocument;
+	doc.open();
+	doc.write(html);
+	doc.close();
+	try {
+		iframe.contentWindow.addEventListener("keydown", handleKeys, true);
+	} catch {
+		// ignore
+	}
+	tab.loading = false;
+	renderTabs();
 }
 
 function pollTab(tab) {
@@ -622,6 +682,7 @@ function runAction(action) {
 	switch (action) {
 		case "home":
 			if (tab.kind === "newtab") return;
+			unloadPage(tab);
 			tab.kind = "newtab";
 			tab.title = "New Tab";
 			tab.favicon = null;
@@ -632,20 +693,23 @@ function runAction(action) {
 			newTab();
 			break;
 		case "settings":
-		case "history": {
+		case "history":
+		case "games": {
 			const existing = tabs.find((t) => t.kind === action);
 			if (existing) activate(existing.id);
 			else newTab(action);
 			break;
 		}
 		case "back":
-			tab.kind === "web" && tab.frame?.back();
+			if (tab.kind === "web") tab.frame?.back();
+			else if (tab.kind === "game") navigate(INTERNAL.games.url, tab);
 			break;
 		case "forward":
 			tab.kind === "web" && tab.frame?.forward();
 			break;
 		case "reload":
 			if (tab.kind === "web" && tab.frame) tab.frame.reload();
+			else if (tab.kind === "game") launchGame(tab.game, tab);
 			else showActive();
 			break;
 		case "bookmark":
@@ -661,6 +725,7 @@ function runAction(action) {
 			break;
 		case "fullscreen":
 			if (document.fullscreenElement) document.exitFullscreen();
+			else if ((tab.kind === "game" || tab.kind === "web") && tab.iframe) tab.iframe.requestFullscreen?.();
 			else document.documentElement.requestFullscreen?.();
 			break;
 	}

@@ -7,7 +7,8 @@
   "license": "AGPL-3.0-only",
   "scripts": {
     "start": "node server.js",
-    "build": "node scripts/build.js"
+    "build": "node scripts/build.js",
+    "update-games": "node scripts/update-games.js"
   },
   "engines": {
     "node": ">=18"
