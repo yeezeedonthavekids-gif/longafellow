@@ -25,7 +25,8 @@ Netlify only hosts static files, so the site deploys there but the **Wisp server
 Wisp is the WebSocket backend that actually fetches pages. You need both parts:
 
 1. **Frontend (Netlify).** Import this repo. `netlify.toml` already sets the build (`npm run build`) and publish dir (`dist`).
-   In *Site configuration → Environment variables* add `WISP_URL`, e.g. `wss://your-wisp-host.example.com/wisp/`, then redeploy.
+   It uses `wss://longafellow.onrender.com/wisp/` by default (see `public/config.js`). To use a different server, set `WISP_URL` in
+   *Site configuration → Environment variables* and redeploy.
 2. **Wisp server (any host with WebSockets).** Deploy this same repo to Render, Railway, Fly.io, or a VPS with
    `npm install` / `npm start`. Its `/wisp/` endpoint is your `WISP_URL`. (It also serves the full site, so that host works on its own too.)
 

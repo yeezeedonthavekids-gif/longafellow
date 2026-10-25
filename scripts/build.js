@@ -22,9 +22,9 @@ for (const [dir, [src, files]] of Object.entries(copies)) {
 	for (const f of files) cpSync(join(src, f), join(out, dir, f));
 }
 
-const wisp = process.env.WISP_URL || "";
+const wisp = process.env.WISP_URL || "wss://longafellow.onrender.com/wisp/";
 writeFileSync(
 	join(out, "config.js"),
 	`self.LONGAFELLOW_CONFIG = ${JSON.stringify({ wisp }, null, "\t")};\n`,
 );
-console.log(`Built dist/ (wisp: ${wisp || "same host /wisp/"})`);
+console.log(`Built dist/ (wisp: ${wisp})`);

@@ -406,7 +406,7 @@ const sections = [
 					["libcurl", "libcurl.js"],
 				],
 			},
-			{ key: "wisp", type: "text", name: "Wisp server", desc: "Leave empty to use this site's built-in server.", placeholder: () => wispUrl() },
+			{ key: "wisp", type: "text", name: "Wisp server", desc: "Leave empty to use the default server.", placeholder: () => wispUrl() },
 		],
 	},
 	{
