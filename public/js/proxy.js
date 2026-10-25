@@ -42,7 +42,74 @@ export async function switchTransport() {
 
 export async function createFrame(iframe) {
 	await initProxy();
-	return controller.createFrame(iframe);
+	const frame = controller.createFrame(iframe);
+	// show a readable page instead of a raw stack trace when a page fails to load
+	$scramjet.Tap.tap(frame.hooks.error.request, (ctx, props) => {
+		const dest = ctx.rawrequest.destination;
+		if (dest !== "document" && dest !== "iframe") return;
+		props.setResponse = {
+			body: errorPage(targetUrl(frame, ctx.rawrequest.rawUrl), ctx.error),
+			status: 502,
+			statusText: "Bad Gateway",
+			headers: [["Content-Type", "text/html; charset=utf-8"]],
+		};
+	});
+	return frame;
+}
+
+// Resolves true if a WebSocket to the Wisp server opens within the timeout.
+export function checkWisp(url = wispUrl(), timeout = 8000) {
+	return new Promise((resolve) => {
+		let ws;
+		const done = (ok) => {
+			clearTimeout(timer);
+			try {
+				ws.close();
+			} catch {
+				// already closed
+			}
+			resolve(ok);
+		};
+		const timer = setTimeout(() => done(false), timeout);
+		try {
+			ws = new WebSocket(url);
+		} catch {
+			return done(false);
+		}
+		ws.onopen = () => done(true);
+		ws.onerror = () => done(false);
+	});
+}
+
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+function targetUrl(frame, rawUrl) {
+	const base = new URL(frame.prefix, location.href).href;
+	if (!rawUrl.startsWith(base)) return rawUrl;
+	try {
+		return controller.config.codec.decode(rawUrl.slice(base.length));
+	} catch {
+		return rawUrl;
+	}
+}
+
+function errorPage(target, error) {
+	const message = String(error?.message || error);
+	const wispDown = /websocket/i.test(message);
+	const accent = settings.accent;
+	const title = wispDown ? "Can't reach the Wisp server" : "This page couldn't load";
+	const hint = wispDown
+		? `Longafellow couldn't connect to <code>${escapeHtml(wispUrl())}</code>. Make sure your Wisp server is running and that <code>WISP_URL</code> (or <b>Settings &rarr; Search &amp; proxy &rarr; Wisp server</b>) points to it.`
+		: `The site may be down, blocking proxies, or the address may be wrong. Try again, or switch the transport in <b>Settings &rarr; Search &amp; proxy</b>.`;
+	return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:${settings.bg};color:${settings.text};font-family:system-ui,sans-serif}
+.box{max-width:620px;padding:32px}h1{margin:0 0 12px;font-size:26px}p{line-height:1.6;opacity:.85}
+code{background:rgba(255,255,255,.08);padding:2px 6px;border-radius:6px;word-break:break-all}
+.url{opacity:.6;font-size:14px;word-break:break-all}
+details{margin-top:18px;font-size:13px;opacity:.7}pre{white-space:pre-wrap;word-break:break-all}
+button{margin-top:14px;padding:10px 18px;border:0;border-radius:10px;background:${accent};color:#fff;font-weight:600;cursor:pointer}
+</style></head><body><div class="box"><h1>${escapeHtml(title)}</h1><div class="url">${escapeHtml(target)}</div><p>${hint}</p>
+<button onclick="location.reload()">Try again</button><details><summary>Technical details</summary><pre>${escapeHtml(message)}</pre></details></div></body></html>`;
 }
 
 // Turns the iframe's proxied location back into the real URL.

@@ -15,7 +15,7 @@ import {
 	defaults,
 } from "./settings.js";
 import { startBackground, seedStars } from "./background.js";
-import { initProxy, createFrame, realUrl, switchTransport, wispUrl } from "./proxy.js";
+import { initProxy, createFrame, realUrl, switchTransport, wispUrl, checkWisp } from "./proxy.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -713,7 +713,10 @@ onChange((patch) => {
 		clearTimeout(transportTimer);
 		transportTimer = setTimeout(() => {
 			switchTransport()
-				.then(() => toast("Transport updated"))
+				.then(() => {
+					toast("Transport updated");
+					updateStatus();
+				})
 				.catch((e) => toast("Transport error: " + e.message));
 		}, 300);
 	}
@@ -736,11 +739,20 @@ if (settings.autoBlank && window.top === window) {
 
 const dot = $("#status-dot");
 const status = $("#status-text");
-initProxy()
-	.then(() => {
+async function updateStatus() {
+	dot.className = "dot";
+	status.textContent = "Connecting to Wisp server…";
+	if (await checkWisp()) {
 		dot.className = "dot ok";
 		status.textContent = "Proxy ready";
-	})
+	} else {
+		dot.className = "dot err";
+		status.textContent = `Can't reach Wisp server at ${wispUrl()} — set WISP_URL or change it in Settings`;
+	}
+}
+
+initProxy()
+	.then(updateStatus)
 	.catch((err) => {
 		console.error(err);
 		dot.className = "dot err";
